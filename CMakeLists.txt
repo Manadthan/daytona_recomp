@@ -149,6 +149,11 @@ if(WIN32 AND EXISTS "${DAYTONA_ICON_ABS}")
     add_executable(daytona WIN32 ${DAYTONA_SOURCES} "${CMAKE_CURRENT_BINARY_DIR}/daytona.rc")
 elseif(WIN32)
     add_executable(daytona WIN32 ${DAYTONA_SOURCES})
+elseif(ANDROID)
+    # Android: SDL3's SDLActivity loads libmain.so and calls SDL_main (defined
+    # by the SDK's windowed_app_main_sdl.cpp), so the game is a shared library.
+    add_library(daytona SHARED ${DAYTONA_SOURCES})
+    set_target_properties(daytona PROPERTIES OUTPUT_NAME main)
 else()
     add_executable(daytona ${DAYTONA_SOURCES})
 endif()
@@ -210,9 +215,13 @@ target_link_libraries(daytona PRIVATE plume smolv)
 # surfaces -- here. Fixed here rather than in the plume fork because this is
 # where the failure is, and because it costs one line instead of a submodule
 # commit; worth pushing upstream to springah/plume eventually.
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT ANDROID)
     find_package(X11 REQUIRED)
     target_link_libraries(daytona PRIVATE X11::X11)
+endif()
+if(ANDROID)
+    # ANativeWindow (plume's Android RenderWindow) and logcat.
+    target_link_libraries(daytona PRIVATE android log)
 endif()
 
 # SDL3 headers, for the Linux window lookup in dt_plume's EnsureWindow.

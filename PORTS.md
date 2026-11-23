@@ -10,6 +10,7 @@ live in the [README](README.md); version history is in [CHANGELOG.md](CHANGELOG.
 | Windows (x64) | `build.ps1` (one shot: tools, SDK CLI, extract, regen, build), or by hand the `win-amd64-release` preset (clang++ GNU driver, MSVC ABI) → `out/build/win-amd64-release` | ✅ v1.1.7 (SDK v0.9.2 + 2 fixes, D3D12) |
 | Steam Deck / Linux (x64) | `linux-amd64-release` preset (any x64 Linux, WSL included) | ✅ v1.1.7 (Vulkan; this tarball was run under WSL only, not booted on a Deck; the v1.1.5 one was) |
 | macOS (arm64) | `mac-arm64-release` preset on an Apple Silicon Mac, bundled by `mac-build/build_app.sh` | ✅ v1.1.7 (Vulkan over MoltenVK) |
+| Android (arm64) | `scripts/build_android.sh` on a Linux x64 PC (NDK r30, Gradle) → APK; see [ANDROID.md](ANDROID.md) | 🧪 builds, not yet run on a device (Vulkan, SDL3 activity) |
 
 The `win-amd64-*` presets name `clang`/`clang++` with `-march=x86-64-v3` and
 target `x86_64-pc-windows-msvc`, so configure from a VS developer shell (MSVC

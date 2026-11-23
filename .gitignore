@@ -26,3 +26,8 @@ core
 core.*
 __pycache__/
 *.pyc
+# Android build (scripts/build_android.sh)
+android/.sdk/
+android/.gradle/
+android/local.properties
+android/app/src/main/jniLibs/

@@ -453,7 +453,20 @@ public:
 
 protected:
     void OnConfigurePaths(rex::PathConfig& paths) override {
+#if REX_PLATFORM_ANDROID
+        // On Android the "executable folder" is the APK's read-only native
+        // library folder. Everything this method puts beside the executable on
+        // desktop (daytona.ini, cache/, assets/) goes to the app's external
+        // files folder instead -- /sdcard/Android/data/<package>/files -- which
+        // the SDK entry point exports as REX_ANDROID_APP_DIR and which the
+        // user can reach over USB or with a file manager.
+        const char* app_dir_env = std::getenv("REX_ANDROID_APP_DIR");
+        const std::filesystem::path exe_dir = app_dir_env != nullptr
+            ? std::filesystem::path(app_dir_env)
+            : rex::filesystem::GetExecutableFolder();
+#else
         const std::filesystem::path exe_dir = rex::filesystem::GetExecutableFolder();
+#endif
         // Leave config_path at the SDK default (<exe_dir>/daytona.ini) so the
         // "Save to config" overlay and any auto-loaded cvars use .ini, matching
         // the sibling recomps (futari/gh/guwange/sdoj/sotn) -- no .toml.

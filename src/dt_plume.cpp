@@ -3286,6 +3286,40 @@ bool EnsureWindow() {
     // NOACTIVATE: stealing focus from the game window would break input.
     ShowWindow(g_window, SW_SHOWNOACTIVATE);
     return true;
+#elif defined(__ANDROID__)
+    // plume's Android RenderWindow is the ANativeWindow itself. SetHostWindow
+    // normally hands it over (the SDK's WindowSDL returns it as the native
+    // handle on Android); fall back to SDL's registry like the Linux branch.
+    if (g_window != nullptr) return true;
+    const char* opt = std::getenv("DT_PLUME_WINDOW");
+    if (opt != nullptr && opt[0] == '0') {
+        if (!g_window_tried) {
+            g_window_tried = true;
+            REXLOG_WARN("plume: DT_PLUME_WINDOW=0 -- composing headless, no window");
+        }
+        return false;
+    }
+    int count = 0;
+    SDL_Window** windows = SDL_GetWindows(&count);
+    ANativeWindow* native = nullptr;
+    if (windows != nullptr && count >= 1) {
+        native = static_cast<ANativeWindow*>(SDL_GetPointerProperty(
+            SDL_GetWindowProperties(windows[0]), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
+    }
+    SDL_free(windows);
+    if (native == nullptr) {
+        if (!g_window_tried) {
+            g_window_tried = true;   // say it once; the caller retries
+            REXLOG_WARN("plume: no Android native window yet (count {}) -- composing headless "
+                        "and retrying", count);
+        }
+        return false;
+    }
+    g_window = native;
+    g_window_borrowed = true;
+    REXLOG_WARN("plume: presenting into the application's Android window ({})",
+                static_cast<const void*>(native));
+    return true;
 #elif defined(__linux__)
     if (g_window.window != 0) return true;
 
@@ -5446,7 +5480,7 @@ void RetrySwapchain() {
     if (speak) g_swapchain_warned = false;
     TrySwapchain("swap hook");
     if (speak && g_swapchain == nullptr) {
-#ifdef __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
         // Measure the window OURSELVES through the same handle plume uses, so
         // the log shows exactly what the create saw rather than a summary.
         XWindowAttributes wa = {};
@@ -6694,7 +6728,15 @@ void Dump(const char* reason) {
 }
 
 void SetHostWindow(void* native_handle) {
-#ifdef _WIN32
+#if defined(__ANDROID__)
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (native_handle == nullptr) return;
+    if (g_window != nullptr) return;
+    g_window = static_cast<ANativeWindow*>(native_handle);
+    g_window_borrowed = true;
+    REXLOG_WARN("plume: presenting into the application's Android window ({})",
+                static_cast<const void*>(g_window));
+#elif defined(_WIN32)
     std::lock_guard<std::mutex> lock(g_mutex);
     if (native_handle == nullptr) return;
     // Never swap a handle out from under a live swapchain -- if a window

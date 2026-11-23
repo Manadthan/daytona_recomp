@@ -1,0 +1,57 @@
+// Packages the native build (scripts/build_android.sh) into an APK.
+//
+// The .so files are NOT built by Gradle: the SDK, plume and the recompiled
+// game are configured with CMake directly (the SDK writes its libraries to its
+// own out/ folder, which Gradle's externalNativeBuild would not pick up).
+// build_android.sh copies them into app/src/main/jniLibs/arm64-v8a/ first.
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'org.daytonarecomp.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'org.daytonarecomp.app'
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName '1.1.7-android'
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    sourceSets {
+        main {
+            // SDL3's Java side, from the exact SDL the native side was built
+            // from: the two talk over JNI and must match.
+            java.srcDirs += ['../../thirdparty/rexglue-sdk/thirdparty/sdl3/android-project/app/src/main/java']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Signed with the debug key so the APK installs as-is. This is a
+            // personal build for your own device, not a store release.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Extract the libraries to nativeLibraryDir on install: the runtime
+            // finds its GPU plugins (librexgpu-*.so) as files on disk.
+            useLegacyPackaging true
+            // build_android.sh already strips them with the NDK's llvm-strip.
+            keepDebugSymbols += ['**/*.so']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
