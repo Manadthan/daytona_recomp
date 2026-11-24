@@ -916,6 +916,15 @@ constexpr uint32_t kSamplerDescriptorSize = 64;
 uint32_t g_tex_cap = kTextureDescriptorSize;
 
 constexpr plume::RenderFormat kRenderTargetFormat = plume::RenderFormat::B8G8R8A8_UNORM;
+// The swapchain, and the two pipelines that draw into it (present blit, ImGui
+// overlay). Android surfaces offer R8G8B8A8 only (no B8G8R8A8), so there the
+// backbuffer is RGBA; the blit samples the BGRA frame target, so the colours
+// stay right either way. Everywhere else it is the frame target's format.
+#if defined(__ANDROID__)
+constexpr plume::RenderFormat kSwapchainFormat = plume::RenderFormat::R8G8B8A8_UNORM;
+#else
+constexpr plume::RenderFormat kSwapchainFormat = kRenderTargetFormat;
+#endif
 constexpr plume::RenderFormat kDepthTargetFormat = plume::RenderFormat::D32_FLOAT;
 
 const char* UsageName(uint8_t usage) {
@@ -3556,7 +3565,7 @@ bool BuildBlit() {
     pd.pipelineLayout = g_blit_layout.get();
     pd.vertexShader = g_blit_vs_shader.get();
     pd.pixelShader = g_blit_ps_shader.get();
-    pd.renderTargetFormat[0] = kRenderTargetFormat;
+    pd.renderTargetFormat[0] = kSwapchainFormat;
     pd.renderTargetCount = 1;
     pd.primitiveTopology = plume::RenderPrimitiveTopology::TRIANGLE_LIST;
     // No depth: there is nothing to occlude, and asking for a depth target the
@@ -3648,7 +3657,7 @@ bool BuildImGuiPass() {
     pd.pipelineLayout = g_imgui_layout.get();
     pd.vertexShader = g_imgui_vs_shader.get();
     pd.pixelShader = g_imgui_ps_shader.get();
-    pd.renderTargetFormat[0] = kRenderTargetFormat;
+    pd.renderTargetFormat[0] = kSwapchainFormat;
     pd.renderTargetCount = 1;
     pd.renderTargetBlend[0] = plume::RenderBlendDesc::AlphaBlend();
     pd.primitiveTopology = plume::RenderPrimitiveTopology::TRIANGLE_LIST;
@@ -3891,7 +3900,7 @@ bool TrySwapchain(const char* reason) {
 
     // maxFrameLatency must be at least 1: the swapchain is created with the
     // waitable-object flag and SetMaximumFrameLatency(0) is invalid.
-    plume::RenderSwapChainDesc sc(g_window, kRenderTargetFormat, 2, false, 2);
+    plume::RenderSwapChainDesc sc(g_window, kSwapchainFormat, 2, false, 2);
     auto chain = g_queue->createSwapChain(sc);
     // A Vulkan swapchain is BORN empty: plume's ctor only creates the surface,
     // and the VkSwapchainKHR (and the width/height isEmpty() checks) appear on

@@ -133,6 +133,12 @@ public class SetupActivity extends Activity {
 
     private String buildReport() {
         StringBuilder r = new StringBuilder();
+        try {
+            r.append("Version de l'appli : ")
+                    .append(getPackageManager().getPackageInfo(getPackageName(), 0).versionName).append('\n');
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            r.append("Version de l'appli : ?\n");
+        }
         r.append("Appareil : ").append(android.os.Build.MANUFACTURER).append(' ')
                 .append(android.os.Build.MODEL).append(", Android ")
                 .append(android.os.Build.VERSION.RELEASE).append(" (API ")
