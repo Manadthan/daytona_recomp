@@ -74,6 +74,7 @@ public class SetupActivity extends Activity {
     private void showCrashReport() {
         final String report = buildReport();
         new File(appDir(), RUNNING_MARKER).delete();
+        final String saved = saveToDownloads(report);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -81,7 +82,9 @@ public class SetupActivity extends Activity {
         root.setBackgroundColor(Color.rgb(16, 24, 40));
 
         TextView title = new TextView(this);
-        title.setText("Le jeu s'est arrêté. Partage ce journal pour qu'on corrige.");
+        title.setText("Le jeu s'est arrêté. Partage ce journal pour qu'on corrige.\n"
+                + (saved != null ? "Copie enregistrée : Téléchargements/" + saved
+                                 : "(copie dans Téléchargements impossible)"));
         title.setTextSize(18);
         title.setTextColor(Color.WHITE);
         root.addView(title);
@@ -98,6 +101,14 @@ public class SetupActivity extends Activity {
             startActivity(Intent.createChooser(send, "Partager le journal"));
         });
         buttons.addView(share);
+        Button save = new Button(this);
+        save.setText("Enregistrer dans Téléchargements");
+        save.setOnClickListener(v -> {
+            String name = saveToDownloads(report);
+            title.setText(name != null ? "Enregistré : Téléchargements/" + name
+                                       : "Échec de l'enregistrement dans Téléchargements");
+        });
+        buttons.addView(save);
         Button retry = new Button(this);
         retry.setText("Relancer le jeu");
         retry.setOnClickListener(v -> {
@@ -129,6 +140,43 @@ public class SetupActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
         share.requestFocus();
+    }
+
+    /**
+     * Writes the report to the public Download folder through MediaStore (no
+     * storage permission needed on Android 10+). Returns the file name, or
+     * null on failure.
+     */
+    private String saveToDownloads(String report) {
+        String name = "daytona-journal-" + new java.text.SimpleDateFormat(
+                "yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date()) + ".txt";
+        android.content.ContentValues values = new android.content.ContentValues();
+        values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+        values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+        values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                android.os.Environment.DIRECTORY_DOWNLOADS);
+        android.content.ContentResolver resolver = getContentResolver();
+        Uri uri = null;
+        try {
+            uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                return null;
+            }
+            try (OutputStream os = resolver.openOutputStream(uri)) {
+                if (os == null) {
+                    throw new IOException("no stream");
+                }
+                os.write(report.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            Log.i(TAG, "report saved to Download/" + name);
+            return name;
+        } catch (IOException | RuntimeException e) {
+            Log.w(TAG, "could not save the report to Download", e);
+            if (uri != null) {
+                resolver.delete(uri, null, null);
+            }
+            return null;
+        }
     }
 
     private String buildReport() {
