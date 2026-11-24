@@ -46,9 +46,17 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        final boolean ranBefore = new File(appDir(), RUNNING_MARKER).exists();
         if (lastRunFailed()) {
             showCrashReport();
             return;
+        }
+        if (ranBefore) {
+            // The last session ended without a crash (Home + swipe away, or the
+            // game quit to the dashboard): still leave its log in Download/,
+            // so a test session always produces a file to send.
+            new File(appDir(), RUNNING_MARKER).delete();
+            saveToDownloads(buildReport());
         }
         if (new File(assetsDir(), MARKER).isFile()) {
             launchGame();
@@ -245,6 +253,8 @@ public class SetupActivity extends Activity {
             }
         }
         if (newest != null) {
+            r.append("== Manette (toutes les lignes SDL input diag) ==\n");
+            r.append(grep(newest, 400, "input diag", "OnControllerDevice")).append("\n");
             r.append("== ").append(newest.getName()).append(" (fin) ==\n");
             r.append(tail(newest, 60000)).append("\n\n");
         }
@@ -255,6 +265,27 @@ public class SetupActivity extends Activity {
             return r.substring(0, 20000) + "\n[...]\n" + r.substring(r.length() - 380000);
         }
         return r.toString();
+    }
+
+    /** Lines of f containing any of the needles, at most maxLines. */
+    private static String grep(File f, int maxLines, String... needles) {
+        StringBuilder out = new StringBuilder();
+        int n = 0;
+        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(f))) {
+            String line;
+            while ((line = br.readLine()) != null && n < maxLines) {
+                for (String needle : needles) {
+                    if (line.contains(needle)) {
+                        out.append(line).append('\n');
+                        n++;
+                        break;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            out.append("(illisible: ").append(e).append(")\n");
+        }
+        return n == 0 ? "(aucune ligne)\n" : out.toString();
     }
 
     private static String tail(File f, int maxBytes) {
