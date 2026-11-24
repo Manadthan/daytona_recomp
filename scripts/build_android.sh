@@ -127,9 +127,12 @@ if [ ! -f assets/default.xex ] || [ ! -d extracted ]; then
 fi
 
 # --- 5. codegen -----------------------------------------------------------------
-if [ ! -f generated/rexglue.cmake ] || [ assets/default.xex -nt generated/rexglue.cmake ]; then
+if [ ! -f generated/default/sources.cmake ] || [ assets/default.xex -nt generated/default/sources.cmake ]; then
   say "recompiling the game's code (codegen)"
-  scripts/regen.sh
+  bash scripts/regen.sh
+fi
+if [ ! -f generated/rexglue.cmake ]; then
+  python3 scripts/render_rexglue_cmake.py "$ROOT/thirdparty/rexglue-sdk" generated/rexglue.cmake
 fi
 
 # --- 6. native build ------------------------------------------------------------
