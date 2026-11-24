@@ -52,9 +52,11 @@ scripts/build_android.sh --install
 /sdcard/Android/data/org.daytonarecomp.app/files/daytona.ini  ← réglages (facultatif)
 ```
 
-Sans câble : installe l'APK à la main et copie le contenu de `extracted/` dans
-ce dossier `assets/` (par USB/MTP depuis le PC ; beaucoup de gestionnaires de
-fichiers Android n'ont plus accès à `Android/data`).
+Sans PC ni câble : zippe le contenu de `extracted/` (`default.xex` à la racine
+du zip ou dans un seul dossier), mets le zip sur la console, installe l'APK et
+lance-le. Tant que les données ne sont pas installées, l'appli affiche
+« Choisir daytona-assets.zip » : elle ouvre le sélecteur de fichiers d'Android,
+décompresse le zip dans son dossier `assets/`, puis lance le jeu.
 
 Les journaux sont dans `files/logs/`, et en direct avec
 `adb logcat -s rexglue SDL Daytona`.
