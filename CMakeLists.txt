@@ -112,6 +112,8 @@ set(DAYTONA_SOURCES
     # the SDK overlay (settings/console) drawn by the native renderer.
     src/dt_imgui_blobs.cpp
     src/dt_plume.cpp
+    # 64-bit integer lowering for GPUs without shaderInt64 (Android/Adreno).
+    src/dt_spirv_int64.cpp
     src/dt_shader_patchtest.cpp
 )
 

@@ -3,6 +3,7 @@
 #include "dt_blit_blobs.h"
 #include "dt_guest_mem.h"
 #include "dt_shader_blobs.h"
+#include "dt_spirv_int64.h"
 
 #include <rex/logging.h>
 
@@ -1186,8 +1187,32 @@ void OnShaderCreated(uint64_t container_hash, bool is_vertex) {
                         entry->name, entry->spirv_size, decoded);
             return;
         }
+#if defined(__ANDROID__)
+        // Mobile GPUs (Adreno) lack shaderInt64, and XenosRecomp's shaders
+        // use 64-bit integers to build buffer addresses: the driver rejects
+        // every one of them. Rewrite that arithmetic as 32-bit pairs. Same
+        // results, valid on any device, so it is done unconditionally here.
+        if (decoded % 4 == 0 &&
+            dt_spirv_int64::UsesInt64(reinterpret_cast<const uint32_t*>(buf.data()), decoded / 4)) {
+            std::vector<uint32_t> words(decoded / 4);
+            std::memcpy(words.data(), buf.data(), decoded);
+            std::string why;
+            if (dt_spirv_int64::Lower(words, &why)) {
+                buf.resize(words.size() * 4);
+                std::memcpy(buf.data(), words.data(), buf.size());
+                REXLOG_WARN("plume: {} -- 64-bit integers lowered to 32-bit pairs ({} -> {} bytes)",
+                            entry->name, decoded, buf.size());
+            } else {
+                REXLOG_WARN("plume: {} -- 64-bit lowering refused ({}); keeping the original",
+                            entry->name, why);
+            }
+        }
+        data = buf.data();
+        size = buf.size();
+#else
         data = buf.data();
         size = decoded;
+#endif
     }
 
     Created created;
