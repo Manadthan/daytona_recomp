@@ -4039,7 +4039,14 @@ bool EnsureSwapchainSized() {
     WaitFence(g_fence, g_fence_pending);
     WaitFence(g_fence_alt, g_fence_alt_pending);
     g_blit_fbs.clear();   // these view the old images
-    g_swapchain->resize();
+    // resize() fails when the surface behind the swapchain is already gone
+    // (Android, Home pressed: the window is abandoned before we hear about
+    // it). Building framebuffers over a swapchain with no images crashed the
+    // driver; skip presenting instead -- the surface callbacks rebuild it.
+    if (!g_swapchain->resize() || g_swapchain->isEmpty()) {
+        REXLOG_WARN("plume: swapchain resize failed (surface lost?) -- not presenting");
+        return false;
+    }
     RebuildSwapchainTargets();
     REXLOG_WARN("plume: swapchain resized to {}x{} (frame is {}x{})",
                 g_swapchain->getWidth(), g_swapchain->getHeight(), kFrameW, kFrameH);
