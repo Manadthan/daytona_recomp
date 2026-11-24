@@ -384,6 +384,13 @@ DaytonaIniSettings LoadDaytonaIni(const std::filesystem::path& exe_dir,
     if (auto it = values.find("diagnostics.log_level"); it != values.end()) {
         SetCvar("log_level", Lower(Trim(it->second)));
     }
+#if REX_PLATFORM_ANDROID
+    // Bring-up: the crash screen can only show what was logged, and the
+    // default "warn" says almost nothing about how far a launch got.
+    if (REXCVAR_GET(log_level) == std::string("warn")) {
+        SetCvar("log_level", "info");
+    }
+#endif
     if (auto it = values.find("diagnostics.log_max_files"); it != values.end()) {
         if (auto value = ParseInt(it->second)) SetCvarInt("log_max_files", ClampInt(*value, 1, 50));
     }

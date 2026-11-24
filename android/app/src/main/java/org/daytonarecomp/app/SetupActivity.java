@@ -35,6 +35,8 @@ public class SetupActivity extends Activity {
     private static final String TAG = "Daytona";
     private static final int PICK_ZIP = 1;
     private static final String MARKER = "default.xex";
+    static final String RUNNING_MARKER = "game_running";
+    private static final String RUN_LOG = "last_run.log";
 
     private TextView status;
     private ProgressBar progress;
@@ -44,11 +46,172 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (lastRunFailed()) {
+            showCrashReport();
+            return;
+        }
         if (new File(assetsDir(), MARKER).isFile()) {
             launchGame();
             return;
         }
         buildUi();
+    }
+
+    private File appDir() {
+        File files = getExternalFilesDir(null);
+        return files != null ? files : getFilesDir();
+    }
+
+    /** The game process died (marker left behind) or SDL_main returned an error. */
+    private boolean lastRunFailed() {
+        if (new File(appDir(), RUNNING_MARKER).exists()) {
+            return true;
+        }
+        String log = tail(new File(appDir(), RUN_LOG), 4096);
+        return log.contains("SDL_main: app returned") && !log.contains("SDL_main: app returned 0");
+    }
+
+    private void showCrashReport() {
+        final String report = buildReport();
+        new File(appDir(), RUNNING_MARKER).delete();
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(32, 32, 32, 32);
+        root.setBackgroundColor(Color.rgb(16, 24, 40));
+
+        TextView title = new TextView(this);
+        title.setText("Le jeu s'est arrêté. Partage ce journal pour qu'on corrige.");
+        title.setTextSize(18);
+        title.setTextColor(Color.WHITE);
+        root.addView(title);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        Button share = new Button(this);
+        share.setText("Partager le journal");
+        share.setOnClickListener(v -> {
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_SUBJECT, "Daytona Android - journal de plantage");
+            send.putExtra(Intent.EXTRA_TEXT, report);
+            startActivity(Intent.createChooser(send, "Partager le journal"));
+        });
+        buttons.addView(share);
+        Button retry = new Button(this);
+        retry.setText("Relancer le jeu");
+        retry.setOnClickListener(v -> {
+            if (new File(assetsDir(), MARKER).isFile()) {
+                launchGame();
+            } else {
+                buildUi();
+            }
+        });
+        buttons.addView(retry);
+        Button reinstall = new Button(this);
+        reinstall.setText("Réinstaller les données");
+        reinstall.setOnClickListener(v -> {
+            deleteRecursive(assetsDir());
+            buildUi();
+        });
+        buttons.addView(reinstall);
+        root.addView(buttons);
+
+        TextView body = new TextView(this);
+        body.setText(report);
+        body.setTextSize(11);
+        body.setTypeface(android.graphics.Typeface.MONOSPACE);
+        body.setTextColor(Color.LTGRAY);
+        body.setTextIsSelectable(true);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.addView(body);
+        root.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        setContentView(root);
+        share.requestFocus();
+    }
+
+    private String buildReport() {
+        StringBuilder r = new StringBuilder();
+        r.append("Appareil : ").append(android.os.Build.MANUFACTURER).append(' ')
+                .append(android.os.Build.MODEL).append(", Android ")
+                .append(android.os.Build.VERSION.RELEASE).append(" (API ")
+                .append(android.os.Build.VERSION.SDK_INT).append(")\n");
+        r.append("Données : ").append(new File(assetsDir(), MARKER).isFile() ? "installées" : "absentes")
+                .append("\n\n");
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            try {
+                android.app.ActivityManager am = getSystemService(android.app.ActivityManager.class);
+                java.util.List<android.app.ApplicationExitInfo> exits =
+                        am.getHistoricalProcessExitReasons(null, 0, 3);
+                r.append("== Dernières fins du processus ==\n");
+                for (android.app.ApplicationExitInfo e : exits) {
+                    r.append(new java.util.Date(e.getTimestamp())).append(" raison=")
+                            .append(e.getReason()).append(" statut=").append(e.getStatus())
+                            .append(" ").append(e.getDescription()).append('\n');
+                }
+                r.append('\n');
+            } catch (RuntimeException e) {
+                r.append("(exit info indisponible: ").append(e).append(")\n\n");
+            }
+        }
+        r.append("== last_run.log (fin) ==\n");
+        r.append(tail(new File(appDir(), RUN_LOG), 60000)).append("\n\n");
+        File newest = null;
+        File[] logs = new File(appDir(), "logs").listFiles();
+        if (logs != null) {
+            for (File f : logs) {
+                if (f.isFile() && (newest == null || f.lastModified() > newest.lastModified())) {
+                    newest = f;
+                }
+            }
+        }
+        if (newest != null) {
+            r.append("== ").append(newest.getName()).append(" (fin) ==\n");
+            r.append(tail(newest, 60000)).append("\n\n");
+        }
+        r.append("== logcat ==\n");
+        r.append(logcat());
+        // Keep it shareable (an intent's text must stay well under 1 MB).
+        if (r.length() > 400000) {
+            return r.substring(0, 20000) + "\n[...]\n" + r.substring(r.length() - 380000);
+        }
+        return r.toString();
+    }
+
+    private static String tail(File f, int maxBytes) {
+        if (!f.isFile()) {
+            return "(absent)";
+        }
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r")) {
+            long len = raf.length();
+            long start = Math.max(0, len - maxBytes);
+            byte[] b = new byte[(int) (len - start)];
+            raf.seek(start);
+            raf.readFully(b);
+            return new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "(illisible: " + e + ")";
+        }
+    }
+
+    /** This app's own log lines (an app may read those without any permission). */
+    private static String logcat() {
+        try {
+            Process p = new ProcessBuilder("logcat", "-d", "-v", "time", "-t", "1500")
+                    .redirectErrorStream(true).start();
+            StringBuilder out = new StringBuilder();
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    out.append(line).append('\n');
+                }
+            }
+            return out.toString();
+        } catch (IOException e) {
+            return "(logcat indisponible: " + e + ")";
+        }
     }
 
     private File assetsDir() {

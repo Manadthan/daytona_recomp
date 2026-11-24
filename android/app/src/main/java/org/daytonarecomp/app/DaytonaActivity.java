@@ -28,8 +28,26 @@ public class DaytonaActivity extends SDLActivity {
                 Log.w(TAG, "could not create " + assets);
             }
             Log.i(TAG, "game data folder: " + assets);
+            // Left behind if the process dies; the launcher then shows the
+            // crash report on the next start (see SetupActivity).
+            try {
+                new File(files, SetupActivity.RUNNING_MARKER).createNewFile();
+            } catch (java.io.IOException e) {
+                Log.w(TAG, "could not write the run marker", e);
+            }
         }
         super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (isFinishing()) {
+            File files = getExternalFilesDir(null);
+            if (files != null) {
+                new File(files, SetupActivity.RUNNING_MARKER).delete();
+            }
+        }
+        super.onDestroy();
     }
 
     @Override
