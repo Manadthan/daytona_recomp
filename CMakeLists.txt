@@ -114,6 +114,8 @@ set(DAYTONA_SOURCES
     src/dt_plume.cpp
     # 64-bit integer lowering for GPUs without shaderInt64 (Android/Adreno).
     src/dt_spirv_int64.cpp
+    # Android: surface lost/restored (Home button), called from Java.
+    src/dt_android_surface.cpp
     src/dt_shader_patchtest.cpp
 )
 

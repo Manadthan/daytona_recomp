@@ -51,6 +51,11 @@ public class DaytonaActivity extends SDLActivity {
     }
 
     @Override
+    protected org.libsdl.app.SDLSurface createSDLSurface(android.content.Context context) {
+        return new DaytonaSurface(context);
+    }
+
+    @Override
     protected String[] getLibraries() {
         // libSDL3.so first (SDLActivity's JNI half), then the game. The game's
         // other dependencies (librexruntime.so, libc++_shared.so, ...) are

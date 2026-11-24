@@ -65,6 +65,30 @@ public class SetupActivity extends Activity {
     /** The game process died (marker left behind) or SDL_main returned an error. */
     private boolean lastRunFailed() {
         if (new File(appDir(), RUNNING_MARKER).exists()) {
+            // The process ended without finishing the game activity. With Home
+            // and the recent-apps list that is also how a player quits, so ask
+            // Android why the last process ended: only a crash or a freeze
+            // counts.
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                try {
+                    android.app.ActivityManager am = getSystemService(android.app.ActivityManager.class);
+                    java.util.List<android.app.ApplicationExitInfo> exits =
+                            am.getHistoricalProcessExitReasons(null, 0, 1);
+                    if (!exits.isEmpty()) {
+                        int reason = exits.get(0).getReason();
+                        boolean crashed = reason == android.app.ApplicationExitInfo.REASON_CRASH
+                                || reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE
+                                || reason == android.app.ApplicationExitInfo.REASON_ANR
+                                || reason == android.app.ApplicationExitInfo.REASON_INITIALIZATION_FAILURE;
+                        if (!crashed) {
+                            new File(appDir(), RUNNING_MARKER).delete();
+                        }
+                        return crashed;
+                    }
+                } catch (RuntimeException e) {
+                    // fall through: report
+                }
+            }
             return true;
         }
         String log = tail(new File(appDir(), RUN_LOG), 4096);

@@ -9,6 +9,10 @@
 
 #include <algorithm>
 #include <atomic>
+
+#if defined(__ANDROID__)
+#include <android/native_window.h>
+#endif
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -3269,6 +3273,13 @@ uint32_t EnsureTexture(uint32_t sampler, const uint8_t* base, DecodedTexture& t)
     return slot;
 }
 
+#if defined(__ANDROID__)
+// The activity's surface, with a reference we own (ANativeWindow_acquire), and
+// whether the app is in the background (no surface at all).
+ANativeWindow* g_android_window = nullptr;
+std::atomic<bool> g_android_paused{false};
+#endif
+
 // Create the presentation window, on whichever thread first draws. Windows
 // dispatches messages to the thread that created the window, so the pump in
 // EndFrame has to live on that same thread -- which it does, because both run
@@ -3321,10 +3332,19 @@ bool EnsureWindow() {
     ShowWindow(g_window, SW_SHOWNOACTIVATE);
     return true;
 #elif defined(__ANDROID__)
-    // plume's Android RenderWindow is the ANativeWindow itself. SetHostWindow
-    // normally hands it over (the SDK's WindowSDL returns it as the native
-    // handle on Android); fall back to SDL's registry like the Linux branch.
+    // plume's Android RenderWindow is the ANativeWindow itself. The activity
+    // hands its surface over on every (re)creation (AndroidSurfaceReady), and
+    // takes it back when the app goes to the background (AndroidSurfaceLost);
+    // while it is gone there is nothing to present into.
+    if (g_android_paused) return false;
     if (g_window != nullptr) return true;
+    if (g_android_window != nullptr) {
+        g_window = g_android_window;
+        g_window_borrowed = true;
+        REXLOG_WARN("plume: presenting into the activity's surface ({})",
+                    static_cast<const void*>(g_window));
+        return true;
+    }
     const char* opt = std::getenv("DT_PLUME_WINDOW");
     if (opt != nullptr && opt[0] == '0') {
         if (!g_window_tried) {
@@ -6760,6 +6780,69 @@ void Dump(const char* reason) {
     if (g_decl_overflow) REXLOG_WARN("   (+{} more distinct declarations)", g_decl_overflow);
     REXLOG_WARN("===== end plume renderer =====");
 }
+
+#if defined(__ANDROID__)
+// Called on the Java UI thread from surfaceDestroyed, BEFORE Android takes the
+// surface away: everything presenting into it has to be gone when this returns
+// (a swapchain outliving its window is how a Home press crashes the driver).
+// Takes the render lock, so it waits for a frame in flight to finish.
+void AndroidSurfaceLost() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_android_paused = true;
+    if (g_swapchain != nullptr) {
+        WaitFence(g_fence, g_fence_pending);
+        WaitFence(g_fence_alt, g_fence_alt_pending);
+        g_blit_fbs.clear();
+        g_swapchain.reset();
+        // Fresh semaphores with the next swapchain: none may be left signalled
+        // by an acquire whose frame was never submitted.
+        g_acquire_sem.reset();
+        g_render_sem.reset();
+    }
+    g_window = nullptr;
+    g_window_borrowed = false;
+    g_swapchain_warned = false;
+    if (g_android_window != nullptr) {
+        ANativeWindow_release(g_android_window);
+        g_android_window = nullptr;
+    }
+    REXLOG_WARN("plume: app in the background -- swapchain released, presenting paused");
+}
+
+// Called on the Java UI thread when the surface exists again (and on every
+// surfaceChanged). Takes ownership of one reference to `window`. The next
+// frame finds it in EnsureWindow and rebuilds the swapchain.
+void AndroidSurfaceReady(ANativeWindow* window) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (window == g_android_window || (g_android_window == nullptr && window == g_window)) {
+        // Same surface (a resize, or the first one SetHostWindow already
+        // handed over): EnsureSwapchainSized handles the size.
+        if (window != nullptr && window != g_android_window) {
+            g_android_window = window;
+        } else if (window != nullptr) {
+            ANativeWindow_release(window);
+        }
+        g_android_paused = false;
+        return;
+    }
+    if (g_swapchain != nullptr) {
+        // A different surface while one is live: drop the old chain first.
+        WaitFence(g_fence, g_fence_pending);
+        WaitFence(g_fence_alt, g_fence_alt_pending);
+        g_blit_fbs.clear();
+        g_swapchain.reset();
+        g_acquire_sem.reset();
+        g_render_sem.reset();
+    }
+    if (g_android_window != nullptr) ANativeWindow_release(g_android_window);
+    g_android_window = window;
+    g_window = nullptr;
+    g_window_borrowed = false;
+    g_android_paused = false;
+    REXLOG_WARN("plume: app in the foreground -- new surface ({}), swapchain rebuilt on the next "
+                "frame", static_cast<const void*>(window));
+}
+#endif
 
 void SetHostWindow(void* native_handle) {
 #if defined(__ANDROID__)

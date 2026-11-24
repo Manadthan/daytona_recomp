@@ -113,6 +113,15 @@ void OnVfetchPatch(uint32_t shader_ea, uint32_t ucode_ea, uint32_t decl_ea,
 // the renderer makes its own.
 void SetHostWindow(void* native_handle);
 
+#if defined(__ANDROID__)
+}  // namespace dt_plume
+struct ANativeWindow;
+namespace dt_plume {
+// Android lifecycle (Home and back): see dt_android_surface.cpp.
+void AndroidSurfaceLost();
+void AndroidSurfaceReady(ANativeWindow* window);  // takes one reference
+#endif
+
 // The SDK overlay in detached mode (settings dialog, debug console, hints).
 // main.cpp hands over the SDK's ImGuiDrawer once the window exists; every
 // present then composites it over the blitted frame.
