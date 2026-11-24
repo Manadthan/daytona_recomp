@@ -52,11 +52,16 @@ scripts/build_android.sh --install
 /sdcard/Android/data/org.daytonarecomp.app/files/daytona.ini  ← réglages (facultatif)
 ```
 
-Sans PC ni câble : zippe le contenu de `extracted/` (`default.xex` à la racine
-du zip ou dans un seul dossier), mets le zip sur la console, installe l'APK et
-lance-le. Tant que les données ne sont pas installées, l'appli affiche
-« Choisir daytona-assets.zip » : elle ouvre le sélecteur de fichiers d'Android,
-décompresse le zip dans son dossier `assets/`, puis lance le jeu.
+Sans PC ni câble : mets le jeu sur la console, installe l'APK et lance-le.
+Tant que les données ne sont pas installées, l'appli affiche « Choisir le
+fichier du jeu » et ouvre le sélecteur de fichiers d'Android. Elle accepte :
+
+- le paquet XBLA lui-même (fichier LIVE/STFS sans extension) ;
+- un zip qui contient ce paquet ;
+- un zip des fichiers déjà extraits (`default.xex` à la racine ou dans un dossier).
+
+Elle extrait le paquet (même méthode que `scripts/extract_game.py`, vérifié
+fichier par fichier) dans son dossier `assets/`, puis lance le jeu.
 
 Les journaux sont dans `files/logs/`, et en direct avec
 `adb logcat -s rexglue SDL Daytona`.

@@ -80,7 +80,8 @@ public class SetupActivity extends Activity {
 
         status = new TextView(this);
         status.setText("Les données du jeu ne sont pas encore installées.\n"
-                + "Choisis le fichier daytona-assets.zip (le contenu extrait de ton paquet XBLA).");
+                + "Choisis ton jeu : le paquet XBLA, un zip qui le contient,\n"
+                + "ou daytona-assets.zip (les fichiers déjà extraits).");
         status.setTextSize(16);
         status.setTextColor(Color.LTGRAY);
         status.setGravity(Gravity.CENTER);
@@ -94,7 +95,7 @@ public class SetupActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         pick = new Button(this);
-        pick.setText("Choisir daytona-assets.zip");
+        pick.setText("Choisir le fichier du jeu");
         pick.setOnClickListener(v -> openPicker());
         root.addView(pick);
 
@@ -105,9 +106,8 @@ public class SetupActivity extends Activity {
     private void openPicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // Any type: the package has no extension, so no MIME filter fits it.
         intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES,
-                new String[] {"application/zip", "application/x-zip-compressed", "application/octet-stream"});
         startActivityForResult(intent, PICK_ZIP);
     }
 
@@ -127,10 +127,27 @@ public class SetupActivity extends Activity {
     private void install(Uri uri) {
         File dest = assetsDir();
         try {
-            // Pass 1: find default.xex, so a zip holding a top-level folder
+            // The original package itself (a LIVE/STFS file, no extension)?
+            byte[] head = new byte[4];
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null || readFully(in, head) < 4) {
+                    fail("Fichier illisible ou vide.");
+                    return;
+                }
+            }
+            if (StfsExtractor.isLivePackage(head)) {
+                try (InputStream in = getContentResolver().openInputStream(uri)) {
+                    installFromPackage(in, -1, dest);
+                }
+                return;
+            }
+
+            // Otherwise a zip. Pass 1: find default.xex, so a zip holding a top-level folder
             // (extracted/default.xex, assets/default.xex, ...) works too, and
             // add up the sizes for the progress bar.
             String prefix = null;
+            String packageEntry = null;  // a LIVE package inside the zip
+            long packageSize = -1;
             long total = 0;
             try (ZipInputStream zip = open(uri)) {
                 ZipEntry e;
@@ -145,12 +162,33 @@ public class SetupActivity extends Activity {
                     if (e.getSize() > 0) {
                         total += e.getSize();
                     }
+                    if (!e.isDirectory() && packageEntry == null) {
+                        byte[] magic = new byte[4];
+                        if (readFully(zip, magic) == 4 && StfsExtractor.isLivePackage(magic)) {
+                            packageEntry = name;
+                            packageSize = e.getSize();
+                        }
+                    }
                 }
+            }
+            if (prefix == null && packageEntry != null) {
+                // e.g. the "(World) (XBLA)" zip: one LIVE package inside.
+                try (ZipInputStream zip = open(uri)) {
+                    ZipEntry e;
+                    while ((e = zip.getNextEntry()) != null) {
+                        if (e.getName().replace('\\', '/').equals(packageEntry)) {
+                            installFromPackage(zip, packageSize, dest);
+                            return;
+                        }
+                    }
+                }
+                fail("Paquet introuvable dans le zip.");
+                return;
             }
             final boolean sized = total > 0;
             ui.post(() -> progress.setIndeterminate(!sized));
             if (prefix == null) {
-                fail("Ce zip ne contient pas default.xex. Choisis daytona-assets.zip.");
+                fail("Ni default.xex ni paquet XBLA dans ce zip.");
                 return;
             }
 
@@ -213,6 +251,63 @@ public class SetupActivity extends Activity {
             deleteRecursive(dest);
             fail("Échec de l'installation : " + ex.getMessage());
         }
+    }
+
+    /**
+     * Copies the package to the app folder (STFS needs random access, which a
+     * picker stream does not give), unpacks it into dest, deletes the copy.
+     */
+    private void installFromPackage(InputStream in, long size, File dest) throws IOException {
+        File tmp = new File(dest.getParentFile(), "package.tmp");
+        ui.post(() -> {
+            status.setText("Copie du paquet… (1/2)");
+            progress.setIndeterminate(size <= 0);
+        });
+        try {
+            long copied = 0;
+            byte[] buf = new byte[1 << 16];
+            try (OutputStream os = new FileOutputStream(tmp)) {
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    os.write(buf, 0, n);
+                    copied += n;
+                    if (size > 0) {
+                        final int permille = (int) Math.min(1000, copied * 1000 / size);
+                        ui.post(() -> progress.setProgress(permille));
+                    }
+                }
+            }
+            deleteRecursive(dest);
+            dest.mkdirs();
+            ui.post(() -> {
+                status.setText("Extraction du jeu… (2/2)");
+                progress.setIndeterminate(false);
+                progress.setProgress(0);
+            });
+            int files = StfsExtractor.extract(tmp, dest, (done, total) -> {
+                final int permille = total > 0 ? (int) Math.min(1000, done * 1000 / total) : 0;
+                ui.post(() -> progress.setProgress(permille));
+            });
+            Log.i(TAG, "extracted " + files + " files from the package into " + dest);
+        } catch (IOException ex) {
+            deleteRecursive(dest);
+            throw ex;
+        } finally {
+            tmp.delete();
+        }
+        ui.post(this::launchGame);
+    }
+
+    private static int readFully(InputStream in, byte[] b) throws IOException {
+        int off = 0;
+        while (off < b.length) {
+            int n = in.read(b, off, b.length - off);
+            if (n < 0) {
+                break;
+            }
+            off += n;
+        }
+        return off;
     }
 
     private ZipInputStream open(Uri uri) throws IOException {
