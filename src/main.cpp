@@ -296,6 +296,14 @@ DaytonaIniSettings LoadDaytonaIni(const std::filesystem::path& exe_dir,
     if (auto it = values.find("display.fullscreen"); it != values.end()) {
         if (auto value = ParseBool(it->second)) SetCvarBool("fullscreen", *value);
     }
+#if REX_PLATFORM_ANDROID
+    // A handheld has one screen and no windows: always fullscreen, which SDL
+    // turns into Android's immersive mode (status and navigation bars hidden).
+    // The window takes the panel's own size whatever `resolution` says, and
+    // the present blit scales the 1280x720 frame to it (1920x1080 on a
+    // Retroid Pocket 6: an exact 1.5x).
+    SetCvarBool("fullscreen", true);
+#endif
     if (auto it = values.find("display.monitor"); it != values.end()) {
         if (auto value = ParseInt(it->second)) SetCvarInt("monitor", ClampInt(*value, 0, 16));
     }

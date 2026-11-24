@@ -21,6 +21,10 @@
         android:enableOnBackInvokedCallback="false"
         android:hardwareAccelerated="true">
 
+        <!-- The Back key arrives as a key event instead of closing the game
+             (a Retroid Pocket's Back button sits right next to Start). -->
+        <meta-data android:name="SDL_ENV.SDL_ANDROID_TRAP_BACK_BUTTON" android:value="1" />
+
         <!-- Launcher: starts the game, or first imports its data from a zip. -->
         <activity
             android:name=".SetupActivity"
