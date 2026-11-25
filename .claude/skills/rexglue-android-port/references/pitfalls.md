@@ -44,7 +44,9 @@ Each item: what broke, why, where the fix lives (forks named in SKILL.md).
   `EnsureWindow` returns false until a new surface arrives.
 - `EnsureSwapchainSized`: if `resize()` fails or the swapchain is empty, return
   false — never rebuild framebuffers on an abandoned BufferQueue.
-- Known limit: the game keeps simulating in background (no auto-pause yet).
+- Auto-pause: the render thread parks in `OnFrameEnd` (outside `g_mutex`) while
+  `g_android_paused`; woken by `AndroidSurfaceReady`, or by `nativeAppQuitting`
+  from `DaytonaActivity.onDestroy` so shutdown never hangs on a parked thread.
 
 ## Threads
 

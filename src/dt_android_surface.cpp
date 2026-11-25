@@ -24,6 +24,10 @@ JNIEXPORT void JNICALL Java_org_daytonarecomp_app_DaytonaSurface_nativeSurfaceRe
     if (window != nullptr) dt_plume::AndroidSurfaceReady(window);
 }
 
+JNIEXPORT void JNICALL Java_org_daytonarecomp_app_DaytonaActivity_nativeAppQuitting(JNIEnv*, jclass) {
+    dt_plume::AndroidAppQuitting();
+}
+
 }  // extern "C"
 
 #endif  // __ANDROID__

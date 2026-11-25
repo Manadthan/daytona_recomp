@@ -39,8 +39,16 @@ public class DaytonaActivity extends SDLActivity {
         super.onCreate(savedInstanceState);
     }
 
+    // Releases the game thread parked by the auto-pause, so shutdown can finish.
+    private static native void nativeAppQuitting();
+
     @Override
     protected void onDestroy() {
+        try {
+            nativeAppQuitting();
+        } catch (UnsatisfiedLinkError e) {
+            // libmain not loaded (failed start): nothing is parked.
+        }
         if (isFinishing()) {
             File files = getExternalFilesDir(null);
             if (files != null) {

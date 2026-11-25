@@ -3278,6 +3278,25 @@ uint32_t EnsureTexture(uint32_t sampler, const uint8_t* base, DecodedTexture& t)
 // whether the app is in the background (no surface at all).
 ANativeWindow* g_android_window = nullptr;
 std::atomic<bool> g_android_paused{false};
+// Auto-pause: the game's render thread parks in OnFrameEnd while the app is in
+// the background, which freezes the game loop (the race, the timers it drives)
+// until the surface comes back, or until the activity is being destroyed.
+std::mutex g_android_pause_mutex;
+std::condition_variable g_android_resume_cv;
+std::atomic<bool> g_android_quitting{false};
+
+void AndroidWaitWhilePaused() {
+    if (!g_android_paused || g_android_quitting) return;
+    REXLOG_WARN("plume: game paused (app in the background)");
+    std::unique_lock<std::mutex> lock(g_android_pause_mutex);
+    g_android_resume_cv.wait(lock, [] { return !g_android_paused || g_android_quitting; });
+    REXLOG_WARN("plume: game resumed");
+}
+
+void AndroidWakeGame() {
+    { std::lock_guard<std::mutex> lock(g_android_pause_mutex); }
+    g_android_resume_cv.notify_all();
+}
 #endif
 
 // Create the presentation window, on whichever thread first draws. Windows
@@ -6664,6 +6683,10 @@ void OnGpuCacheInvalidate(uint32_t base_addr, uint32_t size) {
 // place a frame goes on the screen.
 void OnFrameEnd() {
     if (!Enabled() || !g_init_ok) return;
+#if defined(__ANDROID__)
+    // Outside g_mutex: the UI thread takes it to hand the surface back.
+    AndroidWaitWhilePaused();
+#endif
     std::lock_guard<std::mutex> lock(g_mutex);
     ++g_swaps;
     if (g_frame_open) {
@@ -6830,6 +6853,7 @@ void AndroidSurfaceReady(ANativeWindow* window) {
             ANativeWindow_release(window);
         }
         g_android_paused = false;
+        AndroidWakeGame();
         return;
     }
     if (g_swapchain != nullptr) {
@@ -6846,8 +6870,17 @@ void AndroidSurfaceReady(ANativeWindow* window) {
     g_window = nullptr;
     g_window_borrowed = false;
     g_android_paused = false;
+    AndroidWakeGame();
     REXLOG_WARN("plume: app in the foreground -- new surface ({}), swapchain rebuilt on the next "
                 "frame", static_cast<const void*>(window));
+}
+#endif
+
+#if defined(__ANDROID__)
+// The activity is going away for good: never leave the game parked.
+void AndroidAppQuitting() {
+    g_android_quitting = true;
+    AndroidWakeGame();
 }
 #endif
 

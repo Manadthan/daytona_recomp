@@ -120,6 +120,7 @@ namespace dt_plume {
 // Android lifecycle (Home and back): see dt_android_surface.cpp.
 void AndroidSurfaceLost();
 void AndroidSurfaceReady(ANativeWindow* window);  // takes one reference
+void AndroidAppQuitting();  // activity destroyed: unpark the game for shutdown
 #endif
 
 // The SDK overlay in detached mode (settings dialog, debug console, hints).
