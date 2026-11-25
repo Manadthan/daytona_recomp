@@ -8,6 +8,28 @@ plugins {
     id 'com.android.application'
 }
 
+// Launcher icon: the tile from YOUR game package (extracted/game.png, 64x64),
+// scaled up for the launcher. It is generated at build time and never stored
+// in the repository, like the rest of the game data.
+def gameIconSource = file('../../extracted/game.png')
+def gameIconDir = layout.buildDirectory.dir('generated/gameicon/res').get().asFile
+
+if (gameIconSource.exists()) {
+    def out = new File(gameIconDir, 'drawable-nodpi/ic_launcher_game.png')
+    if (!out.exists() || out.lastModified() < gameIconSource.lastModified()) {
+        out.parentFile.mkdirs()
+        def src = javax.imageio.ImageIO.read(gameIconSource)
+        def size = 192
+        def dst = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        def g = dst.createGraphics()
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                           java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+        g.drawImage(src, 0, 0, size, size, null)
+        g.dispose()
+        javax.imageio.ImageIO.write(dst, 'png', out)
+    }
+}
+
 android {
     namespace 'org.daytonarecomp.app'
     compileSdk 35
@@ -16,11 +38,15 @@ android {
         applicationId 'org.daytonarecomp.app'
         minSdk 29
         targetSdk 35
-        versionCode 14
-        versionName '1.1.7-android.14'
+        versionCode 15
+        versionName '1.1.7-android.15'
         ndk {
             abiFilters 'arm64-v8a'
         }
+        // The game's own Xbox 360 tile when its data has been extracted (see
+        // gameIcon below), otherwise the generic icon in res/drawable.
+        manifestPlaceholders = [appIcon: gameIconSource.exists() ? '@drawable/ic_launcher_game'
+                                                                 : '@drawable/ic_launcher']
     }
 
     sourceSets {
@@ -28,6 +54,7 @@ android {
             // SDL3's Java side, from the exact SDL the native side was built
             // from: the two talk over JNI and must match.
             java.srcDirs += ['../../thirdparty/rexglue-sdk/thirdparty/sdl3/android-project/app/src/main/java']
+            res.srcDirs += [gameIconDir]
         }
     }
 
